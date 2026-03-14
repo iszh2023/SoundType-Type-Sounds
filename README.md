@@ -32,7 +32,5 @@ Real sounds:
 
 Pick a series, then press any key anywhere to play a random sound.
 
-Chrome Web Store - coming soon
-
 Privacy:
 - See `Google Extension/SoundType/PRIVACY_POLICY.md`.

@@ -152,6 +152,13 @@
     meme: ["metal_pipe", "bruh", "gasp", "boing", "error", "ping", "bass", "huh"],
   };
 
+  // Optional per-clip gain multipliers (applied only to "real" audio files, not synth fallback).
+  const CLIP_GAIN = {
+    meme: {
+      huh: 1.25,
+    },
+  };
+
   // UI-only override: show these series as "REAL" even if we are using synth fallback.
   // (Requested for the default Keys series.)
   const UI_FORCE_REAL = new Set(["keys"]);
@@ -175,6 +182,9 @@
       on: false,
       dx: 0,
       dy: 0,
+    },
+    hints: {
+      lowVolDismissed: false,
     },
   };
 
@@ -359,18 +369,19 @@
   async function tryLoadSoundPack(seriesId, opts = {}) {
     ensureAudio();
     const ctx = state.audio.ctx;
-    if (!ctx) return { ok: false, buffers: [], missing: [] };
+    if (!ctx) return { ok: false, buffers: [], names: [], missing: [] };
     const force = !!opts.force;
     if (!force && state.audio.packs.has(seriesId)) return state.audio.packs.get(seriesId);
 
     const entries = SOUND_PACKS[seriesId] || [];
     if (!entries.length) {
-      const pack = { ok: false, buffers: [], missing: [] };
+      const pack = { ok: false, buffers: [], names: [], missing: [] };
       state.audio.packs.set(seriesId, pack);
       return pack;
     }
 
     const buffers = [];
+    const names = [];
     const missing = [];
     // Add common download formats; decode support varies by platform.
     const exts = [".mp3", ".wav", ".ogg", ".m4a", ".webm"];
@@ -388,6 +399,7 @@
           // decodeAudioData copies the buffer internally; do not reuse 'ab'.
           const buf = await ctx.decodeAudioData(ab.slice(0));
           buffers.push(buf);
+          names.push(e);
           loaded = true;
           break;
         } catch {
@@ -397,12 +409,23 @@
       if (!loaded) missing.push(e);
     }
 
-    const pack = { ok: buffers.length > 0, buffers, missing };
+    const pack = { ok: buffers.length > 0, buffers, names, missing };
     state.audio.packs.set(seriesId, pack);
     return pack;
   }
 
-  function playBuffer(buf, whenSec = 0) {
+  function clipGain(seriesId, clipName) {
+    try {
+      const sid = String(seriesId || "");
+      const name = String(clipName || "");
+      const v = Number(CLIP_GAIN?.[sid]?.[name]);
+      return Number.isFinite(v) ? v : 1.0;
+    } catch {
+      return 1.0;
+    }
+  }
+
+  function playBuffer(buf, whenSec = 0, gainMul = 1.0) {
     const ctx = state.audio.ctx;
     const master = state.audio.master;
     if (!ctx || !master || !buf) return;
@@ -410,7 +433,8 @@
     const src = ctx.createBufferSource();
     src.buffer = buf;
     const g = ctx.createGain();
-    g.gain.value = 0.98;
+    const mul = clamp(Number(gainMul) || 1.0, 0.0, 2.0);
+    g.gain.value = 0.98 * mul;
     src.connect(g);
     g.connect(master);
     const t0 = Math.max(ctx.currentTime, whenSec);
@@ -430,6 +454,13 @@
       }
     }
     void save({ volume: v });
+    try {
+      // If the user turned it up, allow the reminder to show again the next time they go low.
+      if (v >= 0.25) state.hints.lowVolDismissed = false;
+      if (state.mounted) applyUiState();
+    } catch {
+      // ignore
+    }
   }
 
   function resumeAudioIfNeeded() {
@@ -540,7 +571,8 @@
         const prev = state.audio.lastPick.get(seriesId) || { bufIdx: -1, patIdx: -1 };
         const { idx, value } = pickRandomNoRepeat(cached.buffers, prev.bufIdx);
         state.audio.lastPick.set(seriesId, { ...prev, bufIdx: idx });
-        playBuffer(value, t);
+        const name = Array.isArray(cached.names) ? cached.names[idx] : "";
+        playBuffer(value, t, clipGain(seriesId, name));
         return;
       }
       if (!cached) {
@@ -745,6 +777,18 @@
         }
       }
     }
+
+    // Low-volume hint banner (only when the panel is visible).
+    try {
+      const show = state.settings.uiOpen && (Number(state.settings.volume) || 0) < 0.25 && !state.hints.lowVolDismissed;
+      if (state.ui.lowVolWrap) {
+        state.ui.lowVolWrap.classList.toggle("show", !!show);
+        state.ui.lowVolWrap.setAttribute("aria-hidden", show ? "false" : "true");
+      }
+      if ((Number(state.settings.volume) || 0) >= 0.25) state.hints.lowVolDismissed = false;
+    } catch {
+      // ignore
+    }
   }
 
   function mountUi() {
@@ -947,6 +991,61 @@
         pointer-events: none;
       }
       .panel[data-theme="light"] .toast { background: rgba(255, 145, 180, 0.95); color: rgba(16,24,40,0.92); }
+      .nudgeWrap {
+        max-height: 0;
+        opacity: 0;
+        transform: translateY(-6px);
+        overflow: hidden;
+        transition: max-height 240ms ease, opacity 240ms ease, transform 240ms ease;
+      }
+      .nudgeWrap.show {
+        max-height: 72px;
+        opacity: 1;
+        transform: translateY(0);
+      }
+      .nudge {
+        margin: 8px 10px 0;
+        padding: 8px 10px;
+        border-radius: 12px;
+        border: 1px solid rgba(255,255,255,0.14);
+        background: rgba(255,255,255,0.08);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .panel[data-theme="light"] .nudge {
+        border-color: rgba(16,24,40,0.14);
+        background: rgba(255,255,255,0.60);
+      }
+      .nudgeX {
+        appearance: none;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        opacity: 0.75;
+        cursor: pointer;
+        font-size: 12px;
+        line-height: 1;
+        padding: 2px 4px;
+        border-radius: 8px;
+      }
+      .nudgeX:hover { opacity: 1; background: rgba(255,255,255,0.10); }
+      .panel[data-theme="light"] .nudgeX:hover { background: rgba(16,24,40,0.08); }
+      .nudgeMsg { font-size: 11px; opacity: 0.9; flex: 1; }
+      .panel[data-theme="light"] .nudgeMsg { font-size: 13px; font-weight: 700; }
+      .nudgeBtn {
+        appearance: none;
+        border: 1px solid rgba(255,255,255,0.16);
+        background: rgba(93, 214, 192, 0.90);
+        color: #071016;
+        border-radius: 999px;
+        padding: 6px 10px;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 800;
+        white-space: nowrap;
+      }
+      .panel[data-theme="light"] .nudgeBtn { background: rgba(255, 145, 180, 0.95); border-color: rgba(255, 145, 180, 0.95); color: rgba(16,24,40,0.92); }
       .footer {
         border-top: 1px solid rgba(255,255,255,0.10);
         padding: 10px;
@@ -1020,6 +1119,13 @@
         </div>
         <button class="close" id="st-close" title="Hide">✕</button>
       </div>
+      <div class="nudgeWrap" id="st-lowvol" aria-hidden="true">
+        <div class="nudge" role="status" aria-live="polite">
+          <button class="nudgeX" id="st-lowvol-x" type="button" title="Dismiss">✕</button>
+          <div class="nudgeMsg">Not hearing anything? Turn up volume</div>
+          <button class="nudgeBtn" id="st-lowvol-up" type="button">Turn up volume</button>
+        </div>
+      </div>
       <div class="body">
         <div class="scrollHint">
           <div class="sectionTitle">Series</div>
@@ -1073,6 +1179,9 @@
     state.ui.close = shadow.getElementById("st-close");
     state.ui.themeDark = shadow.getElementById("st-theme-dark");
     state.ui.themeLight = shadow.getElementById("st-theme-light");
+    state.ui.lowVolWrap = shadow.getElementById("st-lowvol");
+    state.ui.lowVolX = shadow.getElementById("st-lowvol-x");
+    state.ui.lowVolUp = shadow.getElementById("st-lowvol-up");
 
     // Programmatic font load to improve reliability on pages with strict CSP.
     try {
@@ -1163,6 +1272,17 @@
       const v = Number(state.ui.vol.value);
       setVolume(v);
       if (state.ui.volVal) state.ui.volVal.textContent = `${Math.round(clamp(v, 0, 1) * 100)}%`;
+    });
+
+    state.ui.lowVolX?.addEventListener("click", () => {
+      state.hints.lowVolDismissed = true;
+      applyUiState();
+    });
+    state.ui.lowVolUp?.addEventListener("click", () => {
+      setVolume(0.75);
+      // Slide away.
+      state.hints.lowVolDismissed = true;
+      applyUiState();
     });
 
     state.ui.close.addEventListener("click", () => {
