@@ -1,0 +1,9 @@
+.DS_Store
+*.zip
+__MACOSX/
+# Don't commit audio clips to public repos
+sounds/**/*.mp3
+sounds/**/*.wav
+sounds/**/*.ogg
+sounds/**/*.m4a
+sounds/**/*.webm
