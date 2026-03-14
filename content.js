@@ -149,7 +149,7 @@
       "asmr_water_1",
       "asmr_chime_1",
     ],
-    meme: ["metal_pipe", "bruh", "gasp", "boing", "error", "ping", "bass"],
+    meme: ["metal_pipe", "bruh", "gasp", "boing", "error", "ping", "bass", "huh"],
   };
 
   // UI-only override: show these series as "REAL" even if we are using synth fallback.

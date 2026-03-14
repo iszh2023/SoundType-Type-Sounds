@@ -33,7 +33,7 @@ Each name below can be **either**:
 - `sonic`: `ring`, `spin`, `level_up`
 - `undertale`: `sans`, `hit`, `save`
 - `asmr`: `asmr_tap_1`, `asmr_tap_2`, `asmr_brush_1`, `asmr_scratch_1`, `asmr_crinkle_1`, `asmr_whisper_1`, `asmr_whisper_2`, `asmr_rain_1`, `asmr_water_1`, `asmr_chime_1`
-- `meme`: `metal_pipe`, `bruh`, `gasp`, `boing`, `error`, `ping`, `bass`
+- `meme`: `metal_pipe`, `bruh`, `gasp`, `boing`, `error`, `ping`, `bass`, `huh`
 - `keys`: `keys`
 
 ## After adding sounds
