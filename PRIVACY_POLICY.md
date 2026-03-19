@@ -27,4 +27,4 @@ Security
 - The extension does not execute remote code and does not load scripts from external websites.
 
 Contact
-- If you need to contact the developer: iszh2020@gmail.com or go to https://github.com/iszh2023/SoundType-Type-Sounds/issues
+- If you need to contact the developer: isaaczh2020@gmail.com or go to https://github.com/iszh2023/SoundType-Type-Sounds/issues
